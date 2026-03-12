@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code & CCR 內部安裝與實務操作指南</title>
+    <style>
+        /* 定義全域明亮風格變數 */
+        :root {
+            --primary-color: #0056b3;
+            --secondary-color: #e6f2ff;
+            --text-main: #333333;
+            --text-muted: #666666;
+            --accent-color: #d9534f;
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --code-bg: #2b2b2b;
+            --code-text: #a9b7c6;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            overflow: hidden; /* 防止滾動，透過腳本控制幻燈片 */
+        }
+
+       .presentation-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+       .slide {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+            transform: translateX(50px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 4rem 10%;
+            background-color: var(--bg-color);
+            pointer-events: none;
+        }
+
+       .slide.active {
+            opacity: 1;
+            transform: translateX(0);
+            pointer-events: auto;
+            z-index: 10;
+        }
+
+       .slide.prev {
+            transform: translateX(-50px);
+        }
+
+        /* 頂部裝飾條 */
+       .header-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 8px;
+            background: linear-gradient(90deg, var(--primary-color), #4dabf7);
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            color: var(--primary-color);
+            margin-bottom: 1.5rem;
+            text-align: center;
+            line-height: 1.2;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+
+        h2 {
+            font-size: 2.5rem;
+            color: var(--primary-color);
+            margin-bottom: 2rem;
+            width: 100%;
+            border-bottom: 3px solid var(--secondary-color);
+            padding-bottom: 0.5rem;
+        }
+
+        p {
+            font-size: 1.5rem;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+            color: var(--text-main);
+        }
+
+       .highlight {
+            color: var(--accent-color);
+            font-weight: bold;
+        }
+
+       .content-box {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 2.5rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            width: 100%;
+            max-width: 1100px;
+        }
+
+        ul {
+            list-style-type: none;
+            margin-left: 1rem;
+        }
+
+        li {
+            font-size: 1.4rem;
+            margin-bottom: 1.2rem;
+            position: relative;
+            padding-left: 2rem;
+            line-height: 1.5;
+        }
+
+        li::before {
+            content: "•";
+            color: var(--primary-color);
+            font-weight: bold;
+            font-size: 2rem;
+            position: absolute;
+            left: 0;
+            top: -5px;
+        }
+
+        /* 程式碼區塊樣式 */
+       .command-block {
+            background-color: var(--code-bg);
+            color: var(--code-text);
+            font-family: 'Consolas', 'Courier New', monospace;
+            padding: 1.2rem 1.5rem;
+            border-radius: 8px;
+            font-size: 1.3rem;
+            margin: 1rem 0;
+            border-left: 5px solid var(--primary-color);
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+       .command-desc {
+            font-size: 1.2rem;
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        /* 表格樣式優化 */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            font-size: 1.3rem;
+            background-color: white;
+        }
+
+        th, td {
+            padding: 1.2rem;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: var(--secondary-color);
+            color: var(--primary-color);
+            font-weight: bold;
+            border-top: 2px solid var(--primary-color);
+        }
+
+        tr:hover {
+            background-color: #f5f9ff;
+        }
+
+        /* 雙欄版面配置 */
+       .two-column {
+            display: flex;
+            gap: 2.5rem;
+            width: 100%;
+        }
+
+       .column {
+            flex: 1;
+        }
+
+        /* 簡報控制項 */
+       .controls {
+            position: fixed;
+            bottom: 30px;
+            right: 40px;
+            z-index: 100;
+            display: flex;
+            gap: 15px;
+        }
+
+        button {
+            background-color: var(--card-bg);
+            border: 2px solid var(--primary-color);
+            color: var(--primary-color);
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        button:hover {
+            background-color: var(--primary-color);
+            color: white;
+            transform: scale(1.1);
+        }
+
+       .slide-counter {
+            position: fixed;
+            bottom: 30px;
+            left: 40px;
+            font-size: 1.2rem;
+            color: var(--text-muted);
+            z-index: 100;
+            background-color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="presentation-container">
+        <div class="slide active" id="slide-1">
+            <div class="header-bar"></div>
+            <h1>Claude Code 與 CCR 內部環境導入指南</h1>
+            <p style="font-size: 2rem; color: var(--text-muted); text-align: center; margin-top: 10px;">專為韌體(FW)與通訊團隊打造的安全離線輔助工具</p>
+            <div style="margin-top: 4rem; text-align: center; padding: 20px; background-color: white; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+                <p style="margin-bottom: 0;">操作說明：請使用鍵盤的 <strong>←</strong> 與 <strong>→</strong> 鍵，或右下角按鈕進行切換</p>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-2">
+            <div class="header-bar"></div>
+            <div class="content-box">
+                <h2>什麼是 Claude Code？(破除 AI 迷思)</h2>
+                <div class="two-column">
+                    <div class="column">
+                        <p>不需要懂 LLM 或 Agent 這些艱澀名詞，您可以把它視為系統工程中的一個：</p>
+                        <ul>
+                            <li><span class="highlight">不知疲倦的初階工程師</span>：它沒有硬體直覺，但能夠在一秒內閱讀並交叉比對幾千頁的 PDF 規格書。</li>
+                            <li><span class="highlight">終端機裡的整合腳本</span>：它直接安裝在您的 Command Line 裡，不用切換視窗去開網頁，直接與您的 C/C++ 原始碼放在同一個資料夾。</li>
+                            <li><span class="highlight">遺留程式碼翻譯機</span>：專門用來幫您解釋十年前離職學長寫的、完全沒有註解的複雜位元運算與指標操作。</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-3">
+            <div class="header-bar"></div>
+            <div class="content-box">
+                <h2>安全離線安裝與 CCR (路由中介層)</h2>
+                <p>公司的資安規範嚴禁程式碼上傳至雲端。因此 IT 部門準備了 <strong>CCR (Claude Code Router)</strong> 來解決這個問題。</p>
+                <ul>
+                    <li><strong>CCR 就像內部的郵局：</strong> 它會自動攔截發送出去的網路封包，安全地導向<span class="highlight">公司內部的私有 AI 伺服器</span>，確保機密不外流。</li>
+                    <li><strong>安裝與啟動超簡單（關鍵：需要開啟兩個終端機視窗）：</strong></li>
+                </ul>
+                <div class="two-column" style="margin-top: 20px;">
+                    <div class="column">
+                        <p style="font-size: 1.2rem; font-weight: bold; margin-bottom: 5px;">終端機 1 (擔任背景引擎，請勿關閉)</p>
+                        <div class="command-block">
+                            # 啟動內部路由引擎<br>
+                            ccr start
+                        </div>
+                    </div>
+                    <div class="column">
+                        <p style="font-size: 1.2rem; font-weight: bold; margin-bottom: 5px;">終端機 2 (您的開發駕駛座)</p>
+                        <div class="command-block">
+                            # 載入環境變數並啟動工具<br>
+                            eval "$(ccr activate)"<br>
+                            claude
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-4">
+            <div class="header-bar"></div>
+            <div class="content-box">
+                <h2>最常用的基礎指令矩陣</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 35%;">終端機指令 / 斜線指令</th>
+                            <th style="width: 65%;">韌體開發實務應用情境</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span style="font-family: monospace; font-weight: bold; color: var(--primary-color);">claude "問題描述"</span></td>
+                            <td>開啟互動介面並直接帶入任務。例如：<br><code>claude "請分析 main.c 的中斷設定"</code></td>
+                        </tr>
+                        <tr>
+                            <td><span style="font-family: monospace; font-weight: bold; color: var(--primary-color);">claude -c</span></td>
+                            <td>延續上一次還沒做完的討論，不用從頭解釋專案背景，適合中斷恢復。</td>
+                        </tr>
+                        <tr>
+                            <td><span style="font-family: monospace; font-weight: bold; color: var(--primary-color);">cat error.log | claude -p</span></td>
+                            <td>利用管道 (Pipe) 處理大量 Log，找尋編譯或連結器報錯的根本原因。</td>
+                        </tr>
+                        <tr>
+                            <td><span style="font-family: monospace; font-weight: bold; color: var(--accent-color);">/clear</span> (在介面內輸入)</td>
+                            <td><span class="highlight">極度重要：清除對話記憶。</span>當工具開始將不同 MCU 的暫存器位址搞混時，立刻使用此指令重置狀態。</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-5">
+            <div class="header-bar"></div>
+            <div class="content-box">
+                <h2>對韌體 (FW) 開發真正有幫助的情境</h2>
+                <div class="two-column">
+                    <div class="column">
+                        <p><strong>🔥 情境一：硬體規格書 (Datasheet) 處理</strong></p>
+                        <p style="font-size: 1.3rem; margin-bottom: 20px;">把 MCU 的 PDF 規格書轉成純文字 (.md) 放在專案內，請它自動提取 SPI/I2C 暫存器的位址並轉成 C 語言 Struct。再也不會因為人工算錯 Bit Offset 而除錯一整天。</p>
+                        
+                        <p><strong>🔥 情境二：中斷服務常式 (ISR) 效能健檢</strong></p>
+                        <p style="font-size: 1.3rem;">ISR 必須極度簡短。您可以請它審查程式碼中是否隱藏了浮點運算、耗時的 Blocking Calls，或建議如何改用 DMA 傳輸來降低 CPU 負載。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-6">
+            <div class="header-bar"></div>
+            <div class="content-box">
+                <h2>高階心法與避坑指南</h2>
+                <ul>
+                    <li><span class="highlight">加上嚴格的硬體約束條件：</span> 不要只要求「寫一個 Buffer」，要明確下達指令：「寫一個 Ring Buffer，<strong>禁止使用 malloc，且大小必須是 2 的冪次方，確保 Thread-safe。</strong>」</li>
+                    <li><span class="highlight">規劃優先於執行：</span> 遇到需要修改多個檔案的需求，先要求它列出「影響性分析與修改計畫」。您檢查計畫確認無誤後，再授權它改 Code，避免專案崩潰。</li>
+                    <li><span class="highlight">建立「記錄並清除」的習慣：</span> 聊太久系統會邏輯發散。完成一個小任務後，請它把進度寫入 <code>status.md</code>，然後輸入 <code>/clear</code> 清除記憶，再請它讀取該檔案重新開始。</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-7">
+            <div class="header-bar"></div>
+            <div style="text-align: center; width: 100%;">
+                <h1 style="font-size: 4.5rem; margin-bottom: 20px;">Q & A</h1>
+                <p style="font-size: 2.2rem; color: var(--text-muted);">立即開啟您的終端機，體驗安全的本地輔助開發流程</p>
+                <div style="margin-top: 50px; padding: 20px; background-color: var(--card-bg); border-radius: 10px; display: inline-block;">
+                    <p style="font-family: monospace; font-size: 1.5rem; margin-bottom: 0; color: var(--primary-color);">Step 1: ccr start</p>
+                    <p style="font-family: monospace; font-size: 1.5rem; margin-bottom: 0; color: var(--primary-color);">Step 2: eval "$(ccr activate)" && claude</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide-counter" id="counter">1 / 7</div>
+    
+    <div class="controls">
+        <button id="prevBtn" title="上一頁 (左方向鍵)">◄</button>
+        <button id="nextBtn" title="下一頁 (右方向鍵)">►</button>
+    </div>
+
+    <script>
+        // 幻燈片控制邏輯
+        document.addEventListener('DOMContentLoaded', () => {
+            const slides = document.querySelectorAll('.slide');
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const counter = document.getElementById('counter');
+            let currentSlide = 0;
+
+            function updateSlides() {
+                slides.forEach((slide, index) => {
+                    slide.classList.remove('active', 'prev');
+                    if (index === currentSlide) {
+                        slide.classList.add('active');
+                    } else if (index < currentSlide) {
+                        slide.classList.add('prev');
+                    }
+                });
+                counter.textContent = `${currentSlide + 1} / ${slides.length}`;
+            }
+
+            function nextSlide() {
+                if (currentSlide < slides.length - 1) {
+                    currentSlide++;
+                    updateSlides();
+                }
+            }
+
+            function prevSlide() {
+                if (currentSlide > 0) {
+                    currentSlide--;
+                    updateSlides();
+                }
+            }
+
+            nextBtn.addEventListener('click', nextSlide);
+            prevBtn.addEventListener('click', prevSlide);
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowRight' |
+
+| e.key === ' ') {
+                    nextSlide();
+                } else if (e.key === 'ArrowLeft') {
+                    prevSlide();
+                }
+            });
+            
+            // 初始化頁碼
+            updateSlides();
+        });
+    </script>
+</body>
+</html>
